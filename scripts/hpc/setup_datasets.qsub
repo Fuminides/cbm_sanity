@@ -1,0 +1,44 @@
+#!/bin/bash
+#$ -S /bin/bash
+#$ -N cbm_setup_data
+#$ -q all.q
+#$ -cwd
+#$ -o logs/cbm_setup_data.out
+#$ -e logs/cbm_setup_data.err
+#$ -l h_vmem=24G
+
+
+CONDA_ROOT=""
+for candidate in "$HOME/miniconda3" "$HOME/anaconda3" "$HOME/miniforge3" "$HOME/mambaforge"; do
+  if [ -f "$candidate/bin/activate" ]; then
+    CONDA_ROOT="$candidate"
+    break
+  fi
+done
+if [ -n "$CONDA_ROOT" ]; then
+  source "$CONDA_ROOT/bin/activate"
+elif [ -f "$HOME/.bashrc" ]; then
+  source "$HOME/.bashrc"
+fi
+CONDA_ENV="${CONDA_ENV:-datasci}"
+if ! conda activate "$CONDA_ENV"; then
+  echo "Could not activate CPU conda env '$CONDA_ENV'." >&2
+  exit 1
+fi
+PYTHON_BIN="$CONDA_PREFIX/bin/python"
+if [ ! -x "$PYTHON_BIN" ] || ! "$PYTHON_BIN" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)'; then
+  echo "Conda env '$CONDA_ENV' must provide Python >= 3.10 at $PYTHON_BIN." >&2
+  exit 1
+fi
+echo "Using CPU conda env '$CONDA_ENV': $PYTHON_BIN ($("$PYTHON_BIN" --version 2>&1))"
+
+mkdir -p logs
+
+DATA_ROOT="${DATA_ROOT:-$PWD/data/hpc_datasets}"
+CONFIG_PATH="${CONFIG_PATH:-configs/hpc_datasets.env}"
+DATASETS="${DATASETS:-cub awa2}"
+
+scripts/hpc/setup_datasets.sh \
+  --data-root "$DATA_ROOT" \
+  --config-path "$CONFIG_PATH" \
+  --datasets "$DATASETS"

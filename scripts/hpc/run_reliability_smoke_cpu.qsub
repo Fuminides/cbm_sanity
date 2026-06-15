@@ -1,0 +1,57 @@
+#!/bin/bash
+#$ -S /bin/bash
+#$ -N cbm_reliability_smoke
+#$ -q all.q
+#$ -cwd
+#$ -o logs/cbm_reliability_smoke.out
+#$ -e logs/cbm_reliability_smoke.err
+#$ -l h_vmem=16G
+
+
+CONDA_ROOT=""
+for candidate in "$HOME/miniconda3" "$HOME/anaconda3" "$HOME/miniforge3" "$HOME/mambaforge"; do
+  if [ -f "$candidate/bin/activate" ]; then
+    CONDA_ROOT="$candidate"
+    break
+  fi
+done
+if [ -n "$CONDA_ROOT" ]; then
+  source "$CONDA_ROOT/bin/activate"
+elif [ -f "$HOME/.bashrc" ]; then
+  source "$HOME/.bashrc"
+fi
+CONDA_ENV="${CONDA_ENV:-datasci}"
+if ! conda activate "$CONDA_ENV"; then
+  echo "Could not activate CPU conda env '$CONDA_ENV'." >&2
+  echo "Set CONDA_ENV=<env name> at submission (qsub -v CONDA_ENV=...)." >&2
+  exit 1
+fi
+PYTHON_BIN="$CONDA_PREFIX/bin/python"
+if [ ! -x "$PYTHON_BIN" ] || ! "$PYTHON_BIN" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)'; then
+  echo "Conda env '$CONDA_ENV' must provide Python >= 3.10 at $PYTHON_BIN." >&2
+  exit 1
+fi
+echo "Using CPU conda env '$CONDA_ENV': $PYTHON_BIN ($("$PYTHON_BIN" --version 2>&1))"
+
+mkdir -p logs
+
+export SYMBOL_SANITY_NUM_WORKERS="${SYMBOL_SANITY_NUM_WORKERS:-4}"
+
+DATASET_ENV_PATH="${DATASET_ENV_PATH:-configs/hpc_datasets.env}"
+if [[ -f "$DATASET_ENV_PATH" ]]; then
+  source "$DATASET_ENV_PATH"
+fi
+
+SEED="${SEED:-0}"
+CUB_ROOT="${CUB_ROOT:-$PWD/data/hpc_datasets/CUB_200_2011}"
+AWA2_ROOT="${AWA2_ROOT:-$PWD/data/hpc_datasets/Animals_with_Attributes2}"
+RESULTS_ROOT="${RESULTS_ROOT:-results}"
+PRESET="${PRESET:-cub_reliability_smoke}"
+
+scripts/run_reliability_experiment.sh "$PRESET" \
+  --device cpu \
+  --seed "$SEED" \
+  --cub-root "$CUB_ROOT" \
+  --awa2-root "$AWA2_ROOT" \
+  --results-root "$RESULTS_ROOT" \
+  --python-bin "$PYTHON_BIN"

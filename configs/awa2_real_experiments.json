@@ -1,0 +1,51 @@
+{
+  "description": "Preset AwA2 experiments for detector/head symbol-swap runs.",
+  "experiments": [
+    {
+      "name": "awa2_20cls_pilot",
+      "attribute_kind": "binary",
+      "class_start": 1,
+      "num_classes": 20,
+      "val_fraction": 0.15,
+      "test_fraction": 0.2,
+      "detector_seeds": [0, 1, 2],
+      "detector_epochs": 25,
+      "head_epochs": 200,
+      "shared_epochs": 25,
+      "shared_lr": 0.0001,
+      "shared_concept_loss_weight": 1.0,
+      "shared_task_loss_weight": 1.0,
+      "batch_size": 16,
+      "detector_lr": 0.0001,
+      "head_lr": 0.005,
+      "detector_image_size": 299,
+      "statistical_permutations": 1000,
+      "freeze": false,
+      "pretrained": true,
+      "purpose": "AwA2 pilot for class-level attribute transfer diagnostics."
+    },
+    {
+      "name": "awa2_full",
+      "attribute_kind": "binary",
+      "class_start": 1,
+      "num_classes": null,
+      "val_fraction": 0.15,
+      "test_fraction": 0.2,
+      "detector_seeds": [0, 1, 2, 3, 4],
+      "detector_epochs": 100,
+      "head_epochs": 500,
+      "shared_epochs": 100,
+      "shared_lr": 0.0001,
+      "shared_concept_loss_weight": 1.0,
+      "shared_task_loss_weight": 1.0,
+      "batch_size": 32,
+      "detector_lr": 0.0001,
+      "head_lr": 0.001,
+      "detector_image_size": 299,
+      "statistical_permutations": 1000,
+      "freeze": false,
+      "pretrained": true,
+      "purpose": "Main AwA2 paper-scale run. Concepts are class-level predicates replicated to images."
+    }
+  ]
+}

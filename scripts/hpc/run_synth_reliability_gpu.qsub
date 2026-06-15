@@ -1,0 +1,95 @@
+#!/bin/bash
+#$ -S /bin/bash
+#$ -N cbm_synth_reliability
+#$ -q gpu.q
+#$ -cwd
+#$ -o logs/cbm_synth_reliability.out
+#$ -e logs/cbm_synth_reliability.err
+#$ -l gpu=1
+#$ -l h_vmem=24G
+
+
+source /usr/local/gpuallocation.sh
+CONDA_ROOT=""
+for candidate in "$HOME/miniconda3" "$HOME/anaconda3" "$HOME/miniforge3" "$HOME/mambaforge"; do
+  if [ -f "$candidate/bin/activate" ]; then
+    CONDA_ROOT="$candidate"
+    break
+  fi
+done
+if [ -n "$CONDA_ROOT" ]; then
+  source "$CONDA_ROOT/bin/activate"
+elif [ -f "$HOME/.bashrc" ]; then
+  source "$HOME/.bashrc"
+fi
+CONDA_ENV="${CONDA_ENV:-gpuenv}"
+if ! conda activate "$CONDA_ENV"; then
+  echo "Could not activate GPU conda env '$CONDA_ENV'." >&2
+  exit 1
+fi
+PYTHON_BIN="$CONDA_PREFIX/bin/python"
+if [ ! -x "$PYTHON_BIN" ] || ! "$PYTHON_BIN" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)'; then
+  echo "Conda env '$CONDA_ENV' must provide Python >= 3.10 at $PYTHON_BIN." >&2
+  exit 1
+fi
+echo "Using GPU conda env '$CONDA_ENV': $PYTHON_BIN ($("$PYTHON_BIN" --version 2>&1))"
+
+mkdir -p logs
+
+export PYTHONDONTWRITEBYTECODE=1
+export PYTHONPATH="src${PYTHONPATH:+:$PYTHONPATH}"
+export SYMBOL_SANITY_NUM_WORKERS="${SYMBOL_SANITY_NUM_WORKERS:-4}"
+
+SEED="${SEED:-0}"
+RESULTS_ROOT="${RESULTS_ROOT:-results}"
+LAMBDAS="${LAMBDAS:-0.01 0.1 1.0}"
+SEEDS="${SEEDS:-0 1 2 3 4}"
+NUM_HEADS="${NUM_HEADS:-5}"
+CONCEPT_DROPOUT="${CONCEPT_DROPOUT:-0.2}"
+EPOCHS="${EPOCHS:-30}"
+RELIABILITY_EPOCHS="${RELIABILITY_EPOCHS:-10}"
+BATCH_SIZE="${BATCH_SIZE:-32}"
+
+RUN_DIR="${RESULTS_ROOT}/synth_reliability_seed${SEED}"
+DATA_DIR="${RUN_DIR}/data"
+
+"$PYTHON_BIN" -m symbol_sanity.cli experiment-environment \
+  --output-path "$RUN_DIR/environment.json"
+
+"$PYTHON_BIN" -m symbol_sanity.cli generate-synthetic \
+  --output-dir "$DATA_DIR/train" --num-examples 2000 --seed "$((SEED * 10 + 0))"
+"$PYTHON_BIN" -m symbol_sanity.cli generate-synthetic \
+  --output-dir "$DATA_DIR/val" --num-examples 500 --seed "$((SEED * 10 + 1))"
+"$PYTHON_BIN" -m symbol_sanity.cli generate-synthetic \
+  --output-dir "$DATA_DIR/test" --num-examples 1000 --seed "$((SEED * 10 + 2))"
+
+for LAM in $LAMBDAS; do
+  OUT_DIR="${RUN_DIR}/lambda_${LAM}"
+  "$PYTHON_BIN" -m symbol_sanity.cli run-reliability-experiment \
+    --train-dir "$DATA_DIR/train" \
+    --val-dir "$DATA_DIR/val" \
+    --eval-dir "$DATA_DIR/test" \
+    --output-dir "$OUT_DIR" \
+    --task shape_color \
+    --seeds $SEEDS \
+    --num-heads "$NUM_HEADS" \
+    --lambda-concept "$LAM" \
+    --concept-dropout "$CONCEPT_DROPOUT" \
+    --eta 0.1 --beta 1.0 \
+    --epochs "$EPOCHS" \
+    --reliability-epochs "$RELIABILITY_EPOCHS" \
+    --batch-size "$BATCH_SIZE" \
+    --detector-lr 0.0001 --head-lr 0.001 \
+    --device cuda \
+    --detector-image-size 299
+
+  for arm in joint multihead reliability; do
+    "$PYTHON_BIN" -m symbol_sanity.cli statistical-report \
+      --summary-path "$OUT_DIR/arms/$arm/summary.json" \
+      --output-dir "$OUT_DIR/arms/$arm/statistical_report" \
+      --num-permutations 500 \
+      --seed "$SEED" \
+      --batch-size "$BATCH_SIZE" \
+      --device cuda
+  done
+done
