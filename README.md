@@ -1,4 +1,4 @@
-# symbol_sanity
+# Concet Bottleneck Model Sanity Analysis
 
 Code for testing whether concept bottleneck model (CBM) symbols are stable
 across independently trained detectors, classification heads, tasks, and random
